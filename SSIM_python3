@@ -1,0 +1,62 @@
+import numpy as np
+import cv2
+
+#输入的图片为np.array三通道格式
+def SSIM(img1,img2):
+    #公式中设置的参数,默认为1
+    c1 = 1
+    c2 = 1
+    if img1.shape != img2.shape:
+        print("WARNING:2 images shapes are not the same!")
+    #使用YUV空间的Y明度信息来计算，Y = 0.299 * r + 0.587 * g + 0.114 * b;
+    img1_Y = []
+    img2_Y = []
+    for i1 in img1:
+        temp1 = []
+        for j1 in i1:
+            Y1 = 0.299*j1[0]+0.587*j1[1]+0.114*j1[2]
+            temp1.append(Y1)
+        img1_Y.append(temp1)
+    for i2 in img2:
+        temp2 = []
+        for j2 in i2:
+            Y2 = 0.299*j2[0]+0.587*j2[1]+0.114*j2[2]
+            temp2.append(Y2)
+        img2_Y.append(temp2)
+    N = img1.shape[0]
+    N = N*N #图片像素点的个数
+    sum_t1 = np.sum(img1_Y, axis=1)
+    sum1 = np.sum(sum_t1)
+    sum_t2 = np.sum(img2_Y, axis=1)
+    sum2 = np.sum(sum_t2)
+#   计算均值
+    Ux = sum1/N
+    Uy = sum2/N
+#   计算标准差
+    Ox = 0
+    Oy = 0
+    for o1 in img1_Y:
+        for p1 in o1:
+            Ox += ((p1-Ux)*(p1-Ux))
+    for o2 in img2_Y:
+        for p2 in o2:
+            Oy += ((p2-Uy)*(p2-Uy))
+    Ox = Ox/N-1
+    Oy = Oy/N-1
+    Ox = Ox ** 0.5
+    Oy = Oy ** 0.5
+#计算x,y的协方差
+    Oxy = 0
+    N1 = int(N**0.5)
+    for o in range(N1):
+        for p in range(N1):
+            Oxy += ((img1_Y[o][p]-Ux)*(img2_Y[o][p]-Uy))
+    Oxy = Oxy/N-1
+#计算最后的值
+    ssim = ((2*Ux*Uy+c1)*(2*Oxy+c2))/((Ux*Ux+Uy*Uy+c1)*(Ox*Ox+Oy*Oy+c2))
+    return ssim
+    
+if __name__ == "__main__":
+  image1 = cv2.imread("C:/Users/WangYisi/Desktop/2_160.jpg")   
+  image2 = cv2.imread("C:/Users/WangYisi/Desktop/2_160_2.jpg")
+  print(SSIM(image1,image2))
