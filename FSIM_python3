@@ -1,0 +1,496 @@
+import numpy as np
+import cv2
+import math
+
+class FSIMc:
+    def __init__(self,img1,img2):
+        self.img1 = img1
+        self.img2 = img2
+        
+#    a必须为numpy.array,3*3卷积核
+    def fspecial(self,a):    
+        a_shape = a.shape[0]
+        if a.shape[0] <= 3:
+            print("Error!Your kernel size is larger than the image size!")
+        result = [[0 for re in range(a_shape)]for re2 in range(a_shape)]
+        a_shape = a.shape[0]
+        for i in range(a_shape):
+            for j in range(a_shape):
+                if i == 0 and j == 0:
+                    result[i][j] = (a[i][j]+a[i][j+1]+a[i+1][j]+a[i+1][j+1])/9
+                elif i == 0 and j == a_shape-1:
+                    result[i][j] = (a[i][j]+a[i][j-1]+a[i+1][j-1]+a[i+1][j])/9
+                elif i == a_shape - 1 and j == a_shape - 1:
+                    result[i][j] = (a[i][j]+a[i][j-1]+a[i-1][j-1]+a[i-1][j])/9
+                elif i == a_shape - 1 and j == 0:
+                    result[i][j] = (a[i][j]+a[i][j+1]+a[i-1][j]+a[i-1][j+1])/9
+                elif i == 0 and j != 0 and j != a_shape-1:
+                    result[i][j] = (a[i][j]+a[i][j-1]+a[i][j+1]+a[i+1][j-1]+a[i+1][j]+a[i+1][j+1])/9
+                elif i == a_shape-1 and j != 0 and j != a_shape-1:
+                    result[i][j] = (a[i][j]+a[i][j-1]+a[i][j+1]+a[i-1][j-1]+a[i-1][j]+a[i-1][j+1])/9
+                elif j == 0 and i != 0 and i != a_shape-1:
+                    result[i][j] = (a[i][j]+a[i][j+1]+a[i-1][j]+a[i-1][j+1]+a[i+1][j]+a[i+1][j+1])/9
+                elif j == a_shape-1 and i != 0 and i != a_shape-1:
+                    result[i][j] = (a[i][j]+a[i][j-1]+a[i-1][j-1]+a[i-1][j]+a[i+1][j-1]+a[i+1][j])/9
+        result_fake = cv2.blur(a,(3,3))
+        for i1 in range(1,a_shape-1):
+            for j1 in range(1,a_shape-1):
+                result[i1][j1] = result_fake[i1][j1]
+        new = []
+        #步长为3下采样
+        for i2 in range(0,a_shape,3):
+            rank = []
+            for i3 in range(0,a_shape,3):
+                rank.append(result[i2][i3])
+            new.append(rank)
+        new = np.array(new)
+        return new
+
+    def np_max(self,n1,n2):
+        if n1.shape[0] != n2.shape[0]:
+            print("Error!2 images shape not the same!")
+        else:
+            temp_1 = []
+            for i5 in range(n1.shape[0]):
+                rank_1 = []
+                for j5 in range(n1.shape[0]):
+                    temp_2 = max(n1[i5][j5],n2[i5][j5])
+                    rank_1.append(temp_2)
+                temp_1.append(rank_1)
+            temp_1 = np.array(temp_1)
+            return temp_1
+
+    def np_add(self,arr,ad):
+        temp_2 = []
+        for add in arr:
+            rank_2 = []
+            for add1 in add:
+                add1 += ad
+                rank_2.append(add1)
+            temp_2.append(rank_2)
+        temp_2 = np.array(temp_2)
+        return temp_2
+    
+    #图像梯度GM计算函数，使用了Scharr算子
+    def GM(self,b):
+        b_temp = []
+        for b_i in b:
+            rank_ = []
+            for b_j in b_i:
+                temp_ = []
+                temp_.append(b_j)
+                temp_.append(b_j)
+                temp_.append(b_j)
+                rank_.append(temp_)
+            b_temp.append(rank_)      
+        b_temp = np.array(b_temp)  
+        b_temp = b_temp.astype('uint8')
+        b_dx = cv2.Scharr(b_temp,-1,dx=1,dy=0)
+        b_dy = cv2.Scharr(b_temp,-1,dx=0,dy=1)
+        result = []
+        for b in range(len(b_temp)):
+            rank = []
+            for b1 in range(len(b_temp)):
+                temp = ((b_dx[b][b1][0]/16)**2 + (b_dy[b][b1][0]/16)**2)**0.5  #why 16?
+                rank.append(temp)
+            result.append(rank)
+        result = np.array(result)
+        return result
+
+    #低通滤波器
+    def lowpassfilter(self,N, cutoff, n):
+        if cutoff < 0 or cutoff > 0.5:
+            print('Error!Cutoff frequency must be between 0 and 0.5')
+        if n < 1:
+            print('Error!n must be an integer >= 1')
+        xrange_orig = []
+        xrange = []
+        yrange_orig = []
+        yrange = []
+        if N%2 == 1:
+            xrange_orig = list(range(int(-(N-1)/2),int((N-1)/2+1)))
+            yrange_orig = list(range(int(-(N-1)/2),int((N-1)/2+1)))
+            for x1 in xrange_orig:
+                xrange.append(x1/(N-1))
+            for y1 in yrange_orig:
+                yrange.append(y1/N-1)
+        else:
+            xrange_orig = list(range(int(-N/2),int(N/2)))
+            yrange_orig = list(range(int(-N/2),int(N/2)))
+            for x2 in xrange_orig:
+                xrange.append(x2/N)
+            for y2 in yrange_orig:
+                yrange.append(y2/N)
+        #转换成array格式
+        xrange = np.array(xrange)
+        yrange = np.array(yrange)
+        
+        X,Y = np.meshgrid(xrange,yrange)
+        radius = (X**2 + Y**2)**0.5
+        
+        temp_f = []
+        for f in range(len(radius)):
+            rank = []
+            for f1 in range(len(radius[0])):
+                temp = 1 / (1 + (radius[f][f1]/cutoff)**(2*n))
+                rank.append(temp)
+            temp_f.append(rank)
+        temp_f = np.array(temp_f)
+        f = np.fft.ifftshift(temp_f)
+        return f
+
+    def PC(self,img):
+        nscale = 4     # 小滤波器的个数.    
+        norient = 4     # 滤波器的方向.
+        minWaveLength = 6     # 最小尺度的滤波器的波长.    
+        mult = 2     #连续的滤波器的比例因子.    
+        sigmaOnf = 0.55  #描述log-Gabor滤波器频域传递函数的高斯分布的标准差与滤波器中心频率的比值。
+        dThetaOnSigma = 1.2   # 滤波器方向间的角间距与用于在频率平面上构造滤波器的角高斯函数的标准差之比。
+        k = 2.0   #噪声能量超过我们设定的噪声阈值点均值的标准差。低于哪个相位一致性值会被扣分。
+        epsilon = 0.0001   #用于防止除零。
+        thetaSigma = math.pi/norient/dThetaOnSigma  #计算用于构造滤波器的角高斯函数在频率平面上的标准差。
+        #用fft包来计算傅里叶变换
+        b_temp = []
+        for b_i in img:
+            rank_ = []
+            for b_j in b_i:
+                temp_ = []
+                temp_.append(b_j)
+                temp_.append(b_j)
+                temp_.append(b_j)
+                rank_.append(temp_)
+            b_temp.append(rank_)      
+        b_temp = np.array(b_temp)  
+        b_temp = b_temp.astype('uint8')
+        #对输入的图像进行傅里叶变换。
+        img = np.fft.fft2(b_temp)
+        result = []
+        for b in range(len(b_temp)):
+            rank = []
+            for b1 in range(len(b_temp)):
+                temp = b_temp[b][b1][0]
+                rank.append(temp)
+            result.append(rank)
+        img = np.array(result)
+        #计算傅里叶变换结束
+        N = img.shape[0]
+        imagefft = np.fft.fft2(img)
+        zero = [[0 for col in range(N)] for row in range(N)]  #初始化一个和图像完全相同的全0矩阵
+        zero = np.array(zero)
+        EO = [[0 for col in range(norient)] for row in range(nscale)]       #初始化一个用于存放卷积结果的矩阵list
+        estMeanE2n = []
+        ifftFilterArray = []  # Array of inverse FFTs of filters.        ifftFilterArray = cell(1,nscale)
+        #预先计算一些东西，以加快过滤器的建设。建立X和Y矩阵，其范围归一化为+/- 0.5。下面的代码对行和列的奇数和偶数值进行了适当的调整。
+        xrange_orig = []
+        xrange = []
+        yrange_orig = []
+        yrange = []
+        if N%2 == 1:
+            xrange_orig = list(range(int(-(N-1)/2),int((N-1)/2+1)))
+            yrange_orig = list(range(int(-(N-1)/2),int((N-1)/2+1)))
+            for x1 in xrange_orig:
+                xrange.append(x1/(N-1))
+            for y1 in yrange_orig:
+                yrange.append(y1/N-1)
+        else:
+            xrange_orig = list(range(int(-N/2),int(N/2)))
+            yrange_orig = list(range(int(-N/2),int(N/2)))
+            for x2 in xrange_orig:
+                xrange.append(x2/N)
+            for y2 in yrange_orig:
+                yrange.append(y2/N)
+        #转换成array格式
+        xrange = np.array(xrange)
+        yrange = np.array(yrange)
+        X,Y = np.meshgrid(xrange,yrange)   #[x,y] = meshgrid(xrange, yrange);
+        
+        radius = (X**2 + Y**2)**0.5  #矩阵值包含从中心开始的*标准化*半径。
+    
+        # Matrix values contain polar angle.(note -ve y is used to give +veanti-clockwise angles)
+        theta = []      
+        for the in range(len(X)):
+            rank = []
+            for the1 in range(len(X[0])):
+                temp = math.atan2(-Y[the][the1],X[the][the1])
+                rank.append(temp)
+            theta.append(rank)
+        theta = np.array(theta)    
+    				  
+        radius = np.fft.ifftshift(radius)       #象限偏移半径，所以过滤器是在角落0频率。
+        theta  = np.fft.ifftshift(theta)        
+        radius[0,0] = 1  #去掉0频率点处的半径值(现在是左上角)，这样对半径取对数就不会造成麻烦。
+    
+        sintheta = []
+        costheta = []
+        for sin in range(len(theta)):
+            rank_sin = []
+            rank_cos = []
+            for cos in range(len(theta[0])):
+                temp_sin = math.sin(theta[sin][cos])
+                temp_cos = math.cos(theta[sin][cos])
+                rank_sin.append(temp_sin)
+                rank_cos.append(temp_cos)
+            sintheta.append(rank_sin)
+            costheta.append(rank_cos)
+        sintheta = np.array(sintheta)
+        costheta = np.array(costheta)
+        
+        #过滤器由两个部分组成。
+        #1)径向分量，控制滤波器响应的频带
+        #2) angular组件，它控制过滤器响应的方向。这两个组件相乘构成整个过滤器。
+        #  构造径向滤波器组件…
+        #首先构造一个尽可能大的低通滤波器
+        #在边界处为零。所有的log Gabor过滤器都乘以
+        #这是为了确保在FFT的“角落”没有额外的频率
+        #合并时，这似乎会打乱规范化过程计算相一致。
+        lp = self.lowpassfilter(N,0.45,15)       # Radius .45, 'sharpness' 15
+        logGabor = []
+        
+        for s in range(0,nscale):
+            wavelength = minWaveLength * (mult**(s-1))
+            fo = 1.0/wavelength
+            
+            s_temp = []
+            for logG in range(len(radius)):
+                new_rank = []
+                for logg in range(len(radius[0])):
+                    temp = math.exp((-math.log(radius[logG][logg]/fo)**2)/(2*(math.log(sigmaOnf)**2)))
+                    temp = temp*(lp[logG][logg])     #此处部署低通滤波器
+                    new_rank.append(temp)
+                s_temp.append(new_rank)
+            s_temp[0][0] = 0
+            s_temp = np.array(s_temp)
+            logGabor.append(s_temp)
+        #然后构造angular过滤器组件…
+        spread = []
+        for o in range(0,norient):
+            angl = 0*math.pi/norient
+            #对于滤波矩阵中的每个点，计算到的角距离
+            #指定的筛选器方向。来克服角的环绕
+            #首先计算问题的正弦差值和余弦差值
+            #然后使用atan2函数来确定角距离。
+            spread_ = []
+            for sinthe in range(len(sintheta)):
+                rank = []
+                for sinth in range(len(sintheta[0])):
+                    temp_ds = sintheta[sinthe][sinth] * math.cos(angl) - costheta[sinthe][sinth] * math.sin(angl)
+                    temp_dc = costheta[sinthe][sinth] * math.cos(angl) + sintheta[sinthe][sinth] * math.sin(angl)
+                    dtheta = abs(math.atan2(temp_ds,temp_dc))
+                    temp = math.exp((-dtheta ** 2)/(2*thetaSigma**2))
+                    rank.append(temp)
+                spread_.append(rank)
+            spread.append(spread_)
+        #现在开始主循环
+        
+        EnergyAll = [[0 for i11 in range(N)] for i12 in range(N)] 
+        EnergyAll = np.array(EnergyAll)
+        AnALL = [[0 for i11 in range(N)] for i12 in range(N)] 
+        AnAll = np.array(AnALL)
+    
+        for main_i in range(norient):                    #每一个方向
+            sumE_ThisOrient = zero                     #初始化计数矩阵
+            sumO_ThisOrient = zero       
+            sumAn_ThisOrient = zero      
+            Energy = zero
+            EM_n = 0    #En初始化的位置？？？？？？？
+            
+            for ss in range(nscale):                         #For each scale.
+                f_filter = logGabor[ss]*spread[main_i]        #Multiply radial and angular,numpy的位置*乘
+                                                              #components to get the filter. 
+                                     
+                ifftFilt = np.real(np.fft.ifft2(f_filter)) * N;   #Note rescaling to match power
+                ifftFilterArray.append(ifftFilt)               #记录滤波器的ifft2值
+                #卷积图像与偶数和奇数过滤器返回的结果在EO.
+                EO[ss][main_i] = np.fft.ifft2(imagefft * f_filter)
+                An = abs(np.array(EO[ss][main_i]))                         #奇偶滤波器响应的振幅。 
+                sumAn_ThisOrient = sumAn_ThisOrient + An               #Sum of amplitude responses.
+                sumE_ThisOrient = sumE_ThisOrient + np.real(EO[ss][main_i])      #Sum of even filter convolution results.
+                sumO_ThisOrient = sumO_ThisOrient + np.imag(EO[ss][main_i])      #Sum of odd filter convolution results.
+                if ss == 0:       #在最小处记录滤波值的平方规模。这是用来估计噪声的。
+                    for f in f_filter:
+                        for ff in f:
+                            ff = ff ** 2
+                    EM_n = np.sum(f_filter)           
+    #                maxAn = An            ????maxAn后来没用到                
+    #            else:
+    #                maxAn = max(maxAn, An)
+            #得到加权平均滤波响应向量，得到加权平均相位角。
+            XEnergy = []
+            for X in range(len(sumE_ThisOrient)):
+                rank = []
+                for X1 in range(len(sumE_ThisOrient[0])):
+                    temp = sumE_ThisOrient[X][X1]**2 + sumO_ThisOrient[X][X1]**2 + epsilon
+                    rank.append(temp)
+                XEnergy.append(rank)
+            XEnergy = np.array(XEnergy)
+            MeanE = sumE_ThisOrient / XEnergy
+            MeanO = sumO_ThisOrient / XEnergy
+        
+           #现在计算一个(cos(phase_deviation) - | sin(phase_deviation)) |，
+           #使用加权平均滤波器响应向量和每个尺度上的单个滤波器响应向量的点积和叉积。这个数量是相位一致性乘以An，我们称之为能量。
+            for s4 in range(nscale):       
+                E = np.real(EO[s4][main_i]) 
+                O = np.imag(EO[s4][main_i])    
+                Energy = Energy + E*MeanE + O*MeanO - abs(E*MeanO - O*MeanE)
+           #补偿噪音。我们从最小尺度上的能量平方响应来估计噪声功率。
+           #如果噪声是高斯的，能量的平方将是²2DOF的pdf。我们计算中位数能量平方反应，因为这是一个稳健的统计。
+           #我们以此估计平均数。噪声功率的估计是通过平均平方能量值除以平均平方滤波值得到的  
+            medianE2n_orig = abs(EO[0][main_i])**2
+            medianE2n = np.median(medianE2n_orig.reshape((1,N*N)))  #把一个矩阵“抻成”1维的并求矩阵的中间值
+            meanE2n = -medianE2n/np.log(0.5)
+            estMeanE2n.append(meanE2n)
+            
+            noisePower = meanE2n/EM_n                       # Estimate of noise power.
+            #Now estimate the total energy^2 due to noise Estimate for sum(An^2) + sum(Ai.*Aj.*(cphi.*cphj + sphi.*sphj))
+            EstSumAn2 = zero
+            for s5 in range(nscale):
+                EstSumAn2 = EstSumAn2 + ifftFilterArray[s5]**2
+            
+            EstSumAiAj = zero
+            for si in range(nscale - 1):
+                for sj in range(si+1,nscale):
+                    EstSumAiAj = EstSumAiAj + ifftFilterArray[si]*ifftFilterArray[sj]
+            sumEstSumAn2 = np.sum(EstSumAn2)
+            sumEstSumAiAj = np.sum(EstSumAiAj)
+            EstNoiseEnergy2 = 2*noisePower*sumEstSumAn2 + 4*noisePower*sumEstSumAiAj
+            
+            tau = (EstNoiseEnergy2/2)**0.5                     #Rayleigh parameter
+            EstNoiseEnergy = tau*(np.pi/2)**0.5                #Expected value of noise energy
+            EstNoiseEnergySigma = ((2-np.pi/2)*tau**2)**0.5
+            
+            T = EstNoiseEnergy + k*EstNoiseEnergySigma       #Noise threshold
+            #上述估计的噪声效应仅适用于PC_1测量。PC_2的测量并不适用于相同的分析。然而从经验上看，噪音效应被一个因素粗略地高估了
+            #对于这里使用的滤波器参数。
+            T = T/10        #对估计的噪声影响进行经验的重新标定适合PC_2相位一致性测量.##########这个地方需要调参
+            Energy_new = []
+            for En in Energy:
+                ran = []
+                for En1 in En:
+                    tp = max(En1 - T,0)
+                    ran.append(tp)
+                Energy_new.append(ran)
+            Energy_new = np.array(Energy_new)
+            Energy = Energy_new         #应用噪声阈值
+            EnergyAll = EnergyAll + Energy
+            AnAll = AnAll + sumAn_ThisOrient
+        ResultPC = EnergyAll / AnAll
+        return ResultPC
+
+    def depart_channel(self,YIQ,which):
+        temp = []
+        if which == "Y":
+            for de in YIQ:
+                rank = []
+                for de1 in de:
+                    rank.append(de1[0])
+                temp.append(rank)
+        elif which == "I":
+            for de in YIQ:
+                rank = []
+                for de1 in de:
+                    rank.append(de1[1])
+                temp.append(rank)
+        elif which == "Q":
+            for de in YIQ:
+                rank = []
+                for de1 in de:
+                    rank.append(de1[2])
+                temp.append(rank)
+        temp = np.array(temp)
+        return temp
+    
+    def caculate(self):
+        img1 = self.img1
+        img2 = self.img2
+        if img1.shape != img2.shape:
+            print("WARNING:2 images shapes are not the same!")
+    #   首先将RGB色彩空间转换到YIQ色彩空间
+        img1_YIQ = []
+        img2_YIQ = []
+        N = img1.shape[0]
+        for y1 in img1:
+            temp_rank = []
+            for i1 in y1:
+                temp_Y = i1[0]*0.299 + i1[1]*0.587 + i1[2]*0.114
+                temp_I = i1[0]*0.596 + i1[1]*(-0.274) + i1[2]*(-0.322)
+                temp_Q = i1[0]*0.211 + i1[1]*(-0.523) + i1[2]*0.312
+                temp = []
+                temp.append(temp_Y)
+                temp.append(temp_I)
+                temp.append(temp_Q)
+                temp_rank.append(temp)
+            img1_YIQ.append(temp_rank)
+        for y2 in img2:
+            temp_rank = []
+            for i2 in y2:
+                temp_Y = i2[0]*0.299 + i2[1]*0.587 + i2[2]*0.114
+                temp_I = i2[0]*0.596 + i2[1]*(-0.274) + i2[2]*(-0.322)
+                temp_Q = i2[0]*0.211 + i2[1]*(-0.523) + i2[2]*0.312
+                temp = []
+                temp.append(temp_Y)
+                temp.append(temp_I)
+                temp.append(temp_Q)
+                temp_rank.append(temp)
+            img2_YIQ.append(temp_rank)
+        #下采样图片
+        minDimension = N
+        F = max(1,(minDimension//256))
+        if F < 3:
+            Y1 = self.depart_channel(img1_YIQ,"Y")
+            Y2 = self.depart_channel(img2_YIQ,"Y")
+            I1 = self.depart_channel(img1_YIQ,"I")
+            I2 = self.depart_channel(img2_YIQ,"I")
+            Q1 = self.depart_channel(img1_YIQ,"Q")
+            Q2 = self.depart_channel(img2_YIQ,"Q")
+        else:
+            Y1 = self.depart_channel(img1_YIQ,"Y")
+            Y1 = self.fspecial(Y1)
+            Y2 = self.depart_channel(img2_YIQ,"Y")
+            Y2 = self.fspecial(Y2)
+            I1 = self.depart_channel(img1_YIQ,"I")
+            I1 = self.fspecial(I1)
+            I2 = self.depart_channel(img2_YIQ,"I")
+            I2 = self.fspecial(I2)
+            Q1 = self.depart_channel(img1_YIQ,"Q")
+            Q1 = self.fspecial(Q1)
+            Q2 = self.depart_channel(img2_YIQ,"Q")
+            Q2 = self.fspecial(Q2)
+        #计算相位一致性PC
+        PC1 = self.PC(Y1)
+        PC2 = self.PC(Y2)
+        
+        #计算图像梯度   
+        gradientMap1 = self.GM(Y1)
+        gradientMap2 = self.GM(Y2)
+        
+        #计算FSIMc
+        T1 = 0.85      #fixed
+        T2 = 160       #fixed
+        #PCSimMatrix = ((2*PC1)*(PC2) + T1)/(PC1**2 + PC2**2 + T1)
+        PCSimMatrix = self.np_add((2*PC1)*(PC2),T1)/self.np_add(PC1**2 + PC2**2,T1)
+        #gradientSimMatrix = ((2*gradientMap1)*gradientMap2 + T2)/(gradientMap1**2 + gradientMap2**2 + T2)
+        gradientSimMatrix = self.np_add((2*gradientMap1)*gradientMap2,T2)/self.np_add(gradientMap1**2 + gradientMap2**2,T2)
+        PCm = self.np_max(PC1, PC2)
+        
+        T3 = 200
+        T4 = 200
+        ISimMatrix = self.np_add(2*I1*I2,T3)/self.np_add(I1**2 + I2**2,T3)
+        #ISimMatrix = (2*I1*I2 + T3)/(I1**2 + I2**2 + T3)
+        #QSimMatrix = (2*Q1*Q2 + T4)/(Q1**2 + Q2**2 + T4)
+        QSimMatrix = self.np_add(2*Q1*Q2,T4)/self.np_add(Q1**2 + Q2**2,T4)
+    
+        lambda_ = 0.03
+    
+        SimMatrixC = gradientSimMatrix * PCSimMatrix * np.real((ISimMatrix*QSimMatrix)**lambda_)*PCm
+        FSIMc = sum(sum(SimMatrixC))/sum(sum(PCm))
+    
+        return FSIMc
+    
+    
+if __name__ == "__main__":
+    image1 = cv2.imread("C:/Users/WangYisi/Desktop/2_160.jpg") 
+    image1 = image1[: , : , : : -1]   #BGR转RGB
+    image2 = cv2.imread("C:/Users/WangYisi/Desktop/2_160_2.jpg")
+    image2 = image2[: , : , : : -1] 
+    
+    print(FSIMc(image1,image2).caculate())
